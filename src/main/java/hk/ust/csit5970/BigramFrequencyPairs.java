@@ -2,6 +2,7 @@ package hk.ust.csit5970;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Iterator;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
@@ -35,7 +36,7 @@ public class BigramFrequencyPairs extends Configured implements Tool {
     private static final Logger LOG = Logger.getLogger(BigramFrequencyPairs.class);
 
     /*
-     * Mapper class to generate bigrams and emit them with a count of 1.
+     * Mapper: emits <bigram, 1>, where bigram = (leftWord, rightWord)
      */
     private static class MyMapper extends
             Mapper<LongWritable, Text, PairOfStrings, IntWritable> {
@@ -50,15 +51,24 @@ public class BigramFrequencyPairs extends Configured implements Tool {
             String line = ((Text) value).toString();
             String[] words = line.trim().split("\\s+");
 
-            for (int i = 0; i < words.length - 1; i++) {
-                BIGRAM.set(words[i], words[i + 1]);
-                context.write(BIGRAM, ONE);
+            if (words.length > 1) {
+                String previous_word = words[0];
+                for (int i = 1; i < words.length; i++) {
+                    String w = words[i];
+                    // Skip empty words
+                    if (w.length() == 0) {
+                        continue;
+                    }
+                    BIGRAM.set(previous_word, w);
+                    context.write(BIGRAM, ONE);
+                    previous_word = w;
+                }
             }
         }
     }
 
     /*
-     * Reducer class to compute the relative frequencies of bigrams.
+     * Reducer: compute bigram relative frequencies
      */
     private static class MyReducer extends
             Reducer<PairOfStrings, IntWritable, PairOfStrings, FloatWritable> {
@@ -67,44 +77,63 @@ public class BigramFrequencyPairs extends Configured implements Tool {
         private final static FloatWritable VALUE = new FloatWritable();
         private String prevLeft = null;
         private int totalCount = 0;
+        private java.util.ArrayList<PairOfStrings> currentPairs = new java.util.ArrayList<>();
+        private java.util.ArrayList<Integer> currentCounts = new java.util.ArrayList<>();
 
         @Override
         public void reduce(PairOfStrings key, Iterable<IntWritable> values,
                            Context context) throws IOException, InterruptedException {
+            Iterator<IntWritable> iter = values.iterator();
             int sum = 0;
-            for (IntWritable val : values) {
-                sum += val.get();
+            while (iter.hasNext()) {
+                sum += iter.next().get();
             }
 
             if (prevLeft == null || !prevLeft.equals(key.getLeftElement())) {
                 if (prevLeft != null) {
+                    // First output the total count
                     PairOfStrings totalKey = new PairOfStrings(prevLeft, "");
                     VALUE.set(totalCount);
                     context.write(totalKey, VALUE);
+
+                    // Then output the relative frequencies
+                    for (int i = 0; i < currentPairs.size(); i++) {
+                        float relativeFrequency = (float) currentCounts.get(i) / totalCount;
+                        VALUE.set(relativeFrequency);
+                        context.write(currentPairs.get(i), VALUE);
+                    }
                 }
                 prevLeft = key.getLeftElement();
                 totalCount = sum;
+                currentPairs.clear();
+                currentCounts.clear();
             } else {
                 totalCount += sum;
             }
-
-            float relativeFrequency = (float) sum / totalCount;
-            VALUE.set(relativeFrequency);
-            context.write(key, VALUE);
+            currentPairs.add(key.clone());
+            currentCounts.add(sum);
         }
 
         @Override
         protected void cleanup(Context context) throws IOException, InterruptedException {
             if (prevLeft != null) {
+                // Output the total count for the last word
                 PairOfStrings totalKey = new PairOfStrings(prevLeft, "");
                 VALUE.set(totalCount);
                 context.write(totalKey, VALUE);
+
+                // Output the relative frequencies for the last word
+                for (int i = 0; i < currentPairs.size(); i++) {
+                    float relativeFrequency = (float) currentCounts.get(i) / totalCount;
+                    VALUE.set(relativeFrequency);
+                    context.write(currentPairs.get(i), VALUE);
+                }
             }
         }
     }
 
     /*
-     * Combiner class to sum up the counts of bigrams locally.
+     * Combiner: sum up the counts of bigrams locally
      */
     private static class MyCombiner extends
             Reducer<PairOfStrings, IntWritable, PairOfStrings, IntWritable> {
@@ -113,9 +142,10 @@ public class BigramFrequencyPairs extends Configured implements Tool {
         @Override
         public void reduce(PairOfStrings key, Iterable<IntWritable> values,
                            Context context) throws IOException, InterruptedException {
+            Iterator<IntWritable> iter = values.iterator();
             int sum = 0;
-            for (IntWritable val : values) {
-                sum += val.get();
+            while (iter.hasNext()) {
+                sum += iter.next().get();
             }
             SUM.set(sum);
             context.write(key, SUM);
@@ -123,7 +153,8 @@ public class BigramFrequencyPairs extends Configured implements Tool {
     }
 
     /*
-     * Partition bigrams based on their left elements
+     * Partitioner: ensures that keys with the same left element are shuffled to
+     * the same reducer.
      */
     private static class MyPartitioner extends
             Partitioner<PairOfStrings, IntWritable> {
@@ -148,7 +179,7 @@ public class BigramFrequencyPairs extends Configured implements Tool {
     /**
      * Runs this tool.
      */
-    @SuppressWarnings({"static-access"})
+    @SuppressWarnings({ "static-access" })
     public int run(String[] args) throws Exception {
         Options options = new Options();
 
@@ -207,8 +238,8 @@ public class BigramFrequencyPairs extends Configured implements Tool {
         job.setOutputValueClass(FloatWritable.class);
 
         /*
-         * A MapReduce program consists of three components: a mapper, a
-         * reducer, a combiner (which reduces the amount of shuffle data), and a partitioner
+         * A MapReduce program consists of four components: a mapper, a reducer,
+         * an optional combiner, and an optional partitioner.
          */
         job.setMapperClass(MyMapper.class);
         job.setCombinerClass(MyCombiner.class);
