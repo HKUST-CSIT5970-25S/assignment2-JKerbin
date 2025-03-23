@@ -70,67 +70,67 @@ public class BigramFrequencyPairs extends Configured implements Tool {
     /*
      * Reducer: compute bigram relative frequencies
      */
-    private static class MyReducer extends
-            Reducer<PairOfStrings, IntWritable, PairOfStrings, FloatWritable> {
+	private static class MyReducer extends
+			Reducer<PairOfStrings, IntWritable, PairOfStrings, FloatWritable> {
 
-        // Reuse objects.
-        private final static FloatWritable VALUE = new FloatWritable();
-        private String prevLeft = null;
-        private int totalCount = 0;
-        private java.util.ArrayList<PairOfStrings> currentPairs = new java.util.ArrayList<>();
-        private java.util.ArrayList<Integer> currentCounts = new java.util.ArrayList<>();
+		// Reuse objects.
+		private final static FloatWritable VALUE = new FloatWritable();
+		private String prevLeft = null;
+		private int totalCount = 0;
+		private java.util.ArrayList<PairOfStrings> currentPairs = new java.util.ArrayList<PairOfStrings>();
+		private java.util.ArrayList<Integer> currentCounts = new java.util.ArrayList<Integer>();
 
-        @Override
-        public void reduce(PairOfStrings key, Iterable<IntWritable> values,
-                           Context context) throws IOException, InterruptedException {
-            Iterator<IntWritable> iter = values.iterator();
-            int sum = 0;
-            while (iter.hasNext()) {
-                sum += iter.next().get();
-            }
+		@Override
+		public void reduce(PairOfStrings key, Iterable<IntWritable> values,
+						Context context) throws IOException, InterruptedException {
+			Iterator<IntWritable> iter = values.iterator();
+			int sum = 0;
+			while (iter.hasNext()) {
+				sum += iter.next().get();
+			}
 
-            if (prevLeft == null || !prevLeft.equals(key.getLeftElement())) {
-                if (prevLeft != null) {
-                    // First output the total count
-                    PairOfStrings totalKey = new PairOfStrings(prevLeft, "");
-                    VALUE.set(totalCount);
-                    context.write(totalKey, VALUE);
+			if (prevLeft == null || !prevLeft.equals(key.getLeftElement())) {
+				if (prevLeft != null) {
+					// First output the total count
+					PairOfStrings totalKey = new PairOfStrings(prevLeft, "");
+					VALUE.set(totalCount);
+					context.write(totalKey, VALUE);
 
-                    // Then output the relative frequencies
-                    for (int i = 0; i < currentPairs.size(); i++) {
-                        float relativeFrequency = (float) currentCounts.get(i) / totalCount;
-                        VALUE.set(relativeFrequency);
-                        context.write(currentPairs.get(i), VALUE);
-                    }
-                }
-                prevLeft = key.getLeftElement();
-                totalCount = sum;
-                currentPairs.clear();
-                currentCounts.clear();
-            } else {
-                totalCount += sum;
-            }
-            currentPairs.add(key.clone());
-            currentCounts.add(sum);
-        }
+					// Then output the relative frequencies
+					for (int i = 0; i < currentPairs.size(); i++) {
+						float relativeFrequency = (float) currentCounts.get(i) / totalCount;
+						VALUE.set(relativeFrequency);
+						context.write(currentPairs.get(i), VALUE);
+					}
+				}
+				prevLeft = key.getLeftElement();
+				totalCount = sum;
+				currentPairs.clear();
+				currentCounts.clear();
+			} else {
+				totalCount += sum;
+			}
+			currentPairs.add(key.clone());
+			currentCounts.add(sum);
+		}
 
-        @Override
-        protected void cleanup(Context context) throws IOException, InterruptedException {
-            if (prevLeft != null) {
-                // Output the total count for the last word
-                PairOfStrings totalKey = new PairOfStrings(prevLeft, "");
-                VALUE.set(totalCount);
-                context.write(totalKey, VALUE);
+		@Override
+		protected void cleanup(Context context) throws IOException, InterruptedException {
+			if (prevLeft != null) {
+				// Output the total count for the last word
+				PairOfStrings totalKey = new PairOfStrings(prevLeft, "");
+				VALUE.set(totalCount);
+				context.write(totalKey, VALUE);
 
-                // Output the relative frequencies for the last word
-                for (int i = 0; i < currentPairs.size(); i++) {
-                    float relativeFrequency = (float) currentCounts.get(i) / totalCount;
-                    VALUE.set(relativeFrequency);
-                    context.write(currentPairs.get(i), VALUE);
-                }
-            }
-        }
-    }
+				// Output the relative frequencies for the last word
+				for (int i = 0; i < currentPairs.size(); i++) {
+					float relativeFrequency = (float) currentCounts.get(i) / totalCount;
+					VALUE.set(relativeFrequency);
+					context.write(currentPairs.get(i), VALUE);
+				}
+			}
+		}
+	}
 
     /*
      * Combiner: sum up the counts of bigrams locally
