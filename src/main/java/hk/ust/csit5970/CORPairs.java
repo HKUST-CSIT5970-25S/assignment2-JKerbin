@@ -9,7 +9,7 @@ import org.apache.hadoop.io.FloatWritable;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
-import org.apache.hadoop.io.DoubleWritable;
+import org.apache.hadoop.io.DoubleWritable; // 添加这行导入语句
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Partitioner;
@@ -23,7 +23,6 @@ import org.apache.log4j.Logger;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.*;
-
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -177,8 +176,14 @@ public class CORPairs extends Configured implements Tool {
             }
             String wordA = key.getLeftElement();
             String wordB = key.getRightElement();
-            int freqA = word_total_map.getOrDefault(wordA, 0);
-            int freqB = word_total_map.getOrDefault(wordB, 0);
+            Integer freqA = word_total_map.get(wordA);
+            if (freqA == null) {
+                freqA = 0;
+            }
+            Integer freqB = word_total_map.get(wordB);
+            if (freqB == null) {
+                freqB = 0;
+            }
             double cor = (double) freqAB / (freqA * freqB);
             context.write(key, new DoubleWritable(cor));
         }
