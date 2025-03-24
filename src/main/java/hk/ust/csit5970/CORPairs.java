@@ -9,6 +9,7 @@ import org.apache.hadoop.io.FloatWritable;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
+import org.apache.hadoop.io.DoubleWritable;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Partitioner;
@@ -18,6 +19,11 @@ import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
 import org.apache.log4j.Logger;
+
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.*;
+
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -34,91 +40,90 @@ public class CORPairs extends Configured implements Tool {
     private static final Logger LOG = Logger.getLogger(CORPairs.class);
 
     /*
-     * First-pass Mapper
+     * TODO: Write your first-pass Mapper here.
      */
     private static class CORMapper1 extends
             Mapper<LongWritable, Text, Text, IntWritable> {
-        private final static IntWritable one = new IntWritable(1);
-        private Text word = new Text();
-
         @Override
         public void map(LongWritable key, Text value, Context context)
                 throws IOException, InterruptedException {
+            HashMap<String, Integer> word_set = new HashMap<String, Integer>();
+            // Please use this tokenizer! DO NOT implement a tokenizer by yourself!
             String clean_doc = value.toString().replaceAll("[^a-z A-Z]", " ");
             StringTokenizer doc_tokenizer = new StringTokenizer(clean_doc);
+            /*
+             * TODO: Your implementation goes here.
+             */
             while (doc_tokenizer.hasMoreTokens()) {
-                String token = doc_tokenizer.nextToken();
-                word.set(token);
-                context.write(word, one);
+                String word = doc_tokenizer.nextToken();
+                context.write(new Text(word), new IntWritable(1));
             }
         }
     }
 
     /*
-     * First-pass reducer
+     * TODO: Write your first-pass reducer here.
      */
     private static class CORReducer1 extends
             Reducer<Text, IntWritable, Text, IntWritable> {
-        private IntWritable result = new IntWritable();
-
         @Override
         public void reduce(Text key, Iterable<IntWritable> values, Context context) throws IOException, InterruptedException {
+            /*
+             * TODO: Your implementation goes here.
+             */
             int sum = 0;
             for (IntWritable val : values) {
                 sum += val.get();
             }
-            result.set(sum);
-            context.write(key, result);
+            context.write(key, new IntWritable(sum));
         }
     }
 
 
     /*
-     * Second-pass Mapper
+     * TODO: Write your second-pass Mapper here.
      */
     public static class CORPairsMapper2 extends Mapper<LongWritable, Text, PairOfStrings, IntWritable> {
-        private final static IntWritable one = new IntWritable(1);
-
         @Override
         protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
-            Set<String> sorted_word_set = new TreeSet<String>();
-            String doc_clean = value.toString().replaceAll("[^a-z A-Z]", " ");
-            StringTokenizer doc_tokenizers = new StringTokenizer(doc_clean);
-            while (doc_tokenizers.hasMoreTokens()) {
-                sorted_word_set.add(doc_tokenizers.nextToken());
+            // Please use this tokenizer! DO NOT implement a tokenizer by yourself!
+            StringTokenizer doc_tokenizer = new StringTokenizer(value.toString().replaceAll("[^a-z A-Z]", " "));
+            /*
+             * TODO: Your implementation goes here.
+             */
+            Set<String> words = new TreeSet<String>();
+            while (doc_tokenizer.hasMoreTokens()) {
+                words.add(doc_tokenizer.nextToken());
             }
-
-            List<String> wordList = new ArrayList<String>(sorted_word_set);
+            List<String> wordList = new ArrayList<String>(words);
             for (int i = 0; i < wordList.size(); i++) {
                 for (int j = i + 1; j < wordList.size(); j++) {
-                    String word1 = wordList.get(i);
-                    String word2 = wordList.get(j);
-                    PairOfStrings pair = new PairOfStrings(word1, word2);
-                    context.write(pair, one);
+                    PairOfStrings pair = new PairOfStrings(wordList.get(i), wordList.get(j));
+                    context.write(pair, new IntWritable(1));
                 }
             }
         }
     }
 
     /*
-     * Second-pass Combiner
+     * TODO: Write your second-pass Combiner here.
      */
     private static class CORPairsCombiner2 extends Reducer<PairOfStrings, IntWritable, PairOfStrings, IntWritable> {
-        private IntWritable result = new IntWritable();
-
         @Override
         protected void reduce(PairOfStrings key, Iterable<IntWritable> values, Context context) throws IOException, InterruptedException {
+            /*
+             * TODO: Your implementation goes here.
+             */
             int sum = 0;
             for (IntWritable val : values) {
                 sum += val.get();
             }
-            result.set(sum);
-            context.write(key, result);
+            context.write(key, new IntWritable(sum));
         }
     }
 
     /*
-     * Second-pass Reducer
+     * TODO: Write your second-pass Reducer here.
      */
     public static class CORPairsReducer2 extends Reducer<PairOfStrings, IntWritable, PairOfStrings, DoubleWritable> {
         private final static Map<String, Integer> word_total_map = new HashMap<String, Integer>();
@@ -135,7 +140,7 @@ public class CORPairs extends Configured implements Tool {
                 FileSystem fs = FileSystem.get(URI.create(middle_result_path.toString()), middle_conf);
 
                 if (!fs.exists(middle_result_path)) {
-                    throw new IOException(middle_result_path.toString() + " not exist!");
+                    throw new IOException(middle_result_path.toString() + "not exist!");
                 }
 
                 FSDataInputStream in = fs.open(middle_result_path);
@@ -158,20 +163,24 @@ public class CORPairs extends Configured implements Tool {
             }
         }
 
+        /*
+         * TODO: write your second-pass Reducer here.
+         */
         @Override
         protected void reduce(PairOfStrings key, Iterable<IntWritable> values, Context context) throws IOException, InterruptedException {
+            /*
+             * TODO: Your implementation goes here.
+             */
             int freqAB = 0;
             for (IntWritable val : values) {
                 freqAB += val.get();
             }
-
-            String word1 = key.getLeftElement();
-            String word2 = key.getRightElement();
-            int freqA = word_total_map.containsKey(word1) ? word_total_map.get(word1) : 0;
-            int freqB = word_total_map.containsKey(word2) ? word_total_map.get(word2) : 0;
+            String wordA = key.getLeftElement();
+            String wordB = key.getRightElement();
+            int freqA = word_total_map.getOrDefault(wordA, 0);
+            int freqB = word_total_map.getOrDefault(wordB, 0);
             double cor = (double) freqAB / (freqA * freqB);
-            DoubleWritable outputValue = new DoubleWritable(cor);
-            context.write(key, outputValue);
+            context.write(key, new DoubleWritable(cor));
         }
     }
 
@@ -278,7 +287,6 @@ public class CORPairs extends Configured implements Tool {
         job2.setMapperClass(CORPairsMapper2.class);
         job2.setCombinerClass(CORPairsCombiner2.class);
         job2.setReducerClass(CORPairsReducer2.class);
-        job2.setPartitionerClass(MyPartitioner.class);
 
         job2.setOutputKeyClass(PairOfStrings.class);
         job2.setOutputValueClass(DoubleWritable.class);
