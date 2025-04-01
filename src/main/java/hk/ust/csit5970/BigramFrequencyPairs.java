@@ -85,7 +85,7 @@ public class BigramFrequencyPairs extends Configured implements Tool {
             }
 
             if (key.getRightElement().equals("")) {
-                // 这是 (leftWord, "*") 记录，代表 totalCount
+                // 这是 (leftWord, "") 记录，代表 totalCount
                 totalCount = sum;
                 VALUE.set(totalCount);
                 context.write(key, VALUE);
