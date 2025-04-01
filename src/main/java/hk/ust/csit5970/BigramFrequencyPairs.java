@@ -61,6 +61,8 @@ public class BigramFrequencyPairs extends Configured implements Tool {
                     }
                     BIGRAM.set(previous_word, w);
                     context.write(BIGRAM, ONE);
+                    BIGRAM.set(previous_word, "");  // 额外记录 word1 总出现次数
+                    context.write(BIGRAM, ONE);
                     previous_word = w;
                 }
             }
@@ -70,67 +72,32 @@ public class BigramFrequencyPairs extends Configured implements Tool {
     /*
      * Reducer: compute bigram relative frequencies
      */
-	private static class MyReducer extends
-			Reducer<PairOfStrings, IntWritable, PairOfStrings, FloatWritable> {
+	private static class MyReducer extends Reducer<PairOfStrings, IntWritable, PairOfStrings, FloatWritable> {
+        private final static FloatWritable VALUE = new FloatWritable();
+        private int totalCount = 0;
 
-		// Reuse objects.
-		private final static FloatWritable VALUE = new FloatWritable();
-		private String prevLeft = null;
-		private int totalCount = 0;
-		private java.util.ArrayList<PairOfStrings> currentPairs = new java.util.ArrayList<PairOfStrings>();
-		private java.util.ArrayList<Integer> currentCounts = new java.util.ArrayList<Integer>();
+        @Override
+        public void reduce(PairOfStrings key, Iterable<IntWritable> values, Context context)
+                throws IOException, InterruptedException {
+            int sum = 0;
+            for (IntWritable value : values) {
+                sum += value.get();
+            }
 
-		@Override
-		public void reduce(PairOfStrings key, Iterable<IntWritable> values,
-						Context context) throws IOException, InterruptedException {
-			Iterator<IntWritable> iter = values.iterator();
-			int sum = 0;
-			while (iter.hasNext()) {
-				sum += iter.next().get();
-			}
+            if (key.getRightElement().equals("")) {
+                // 这是 (leftWord, "*") 记录，代表 totalCount
+                totalCount = sum;
+                VALUE.set(totalCount);
+                context.write(key, VALUE);
+            } else {
+                // 计算相对频率
+                float relativeFrequency = (float) sum / totalCount;
+                VALUE.set(relativeFrequency);
+                context.write(key, VALUE);
+            }
+        }
+    }
 
-			if (prevLeft == null || !prevLeft.equals(key.getLeftElement())) {
-				if (prevLeft != null) {
-					// First output the total count
-					PairOfStrings totalKey = new PairOfStrings(prevLeft, "");
-					VALUE.set(totalCount);
-					context.write(totalKey, VALUE);
-
-					// Then output the relative frequencies
-					for (int i = 0; i < currentPairs.size(); i++) {
-						float relativeFrequency = (float) currentCounts.get(i) / totalCount;
-						VALUE.set(relativeFrequency);
-						context.write(currentPairs.get(i), VALUE);
-					}
-				}
-				prevLeft = key.getLeftElement();
-				totalCount = sum;
-				currentPairs.clear();
-				currentCounts.clear();
-			} else {
-				totalCount += sum;
-			}
-			currentPairs.add(key.clone());
-			currentCounts.add(sum);
-		}
-
-		@Override
-		protected void cleanup(Context context) throws IOException, InterruptedException {
-			if (prevLeft != null) {
-				// Output the total count for the last word
-				PairOfStrings totalKey = new PairOfStrings(prevLeft, "");
-				VALUE.set(totalCount);
-				context.write(totalKey, VALUE);
-
-				// Output the relative frequencies for the last word
-				for (int i = 0; i < currentPairs.size(); i++) {
-					float relativeFrequency = (float) currentCounts.get(i) / totalCount;
-					VALUE.set(relativeFrequency);
-					context.write(currentPairs.get(i), VALUE);
-				}
-			}
-		}
-	}
 
     /*
      * Combiner: sum up the counts of bigrams locally
